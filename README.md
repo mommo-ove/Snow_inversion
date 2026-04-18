@@ -41,6 +41,8 @@ Outputs are written to:
 random_forest/outputs/
 ```
 
+The script also copies the key metrics and figures to `reports/`, which is meant for sharing through GitHub without uploading the raw data.
+
 The script reports two validation settings:
 
 ```text
@@ -61,3 +63,15 @@ The old scripts are kept as compatibility entry points, but the recommended work
 python random_forest\inspect_data.py
 python random_forest\run_rf_experiments.py
 ```
+
+## Share results
+
+After running experiments on the server, commit the generated report files instead of the ignored raw output folder:
+
+```powershell
+git add reports/
+git commit -m "Add latest RF results"
+git push
+```
+
+Then collaborators can inspect the metrics and selected figures from GitHub.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -106,6 +107,51 @@ def save_permutation_importance(
     print("Saved:", csv_path)
 
 
+def export_shareable_report(metrics_df: pd.DataFrame, out_dir: Path) -> None:
+    reports_dir = Path("reports")
+    figures_dir = reports_dir / "figures" / out_dir.name
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    figure_names = [
+        "random_split_observed_vs_predicted.png",
+        "random_split_feature_importance.png",
+        "buoy_held_out_observed_vs_predicted.png",
+        "buoy_held_out_feature_importance.png",
+    ]
+    copied_figures = []
+    for name in figure_names:
+        src = out_dir / name
+        if src.exists():
+            dst = figures_dir / name
+            shutil.copy2(src, dst)
+            copied_figures.append(dst)
+
+    metrics_copy = reports_dir / f"{out_dir.name}_rf_metrics.csv"
+    metrics_df.to_csv(metrics_copy, index=False)
+
+    report_path = reports_dir / f"{out_dir.name}_rf_results.md"
+    with report_path.open("w", encoding="utf-8") as handle:
+        handle.write(f"# Random Forest Results: {out_dir.name}\n\n")
+        handle.write("## Metrics\n\n")
+        handle.write(metrics_df.to_markdown(index=False))
+        handle.write("\n\n")
+        handle.write("## Figures\n\n")
+        for figure in copied_figures:
+            rel = figure.as_posix()
+            handle.write(f"- {figure.name}\n\n")
+            handle.write(f"![{figure.stem}]({rel})\n\n")
+        handle.write("## Notes\n\n")
+        handle.write(
+            "`random_split` is an 80/20 random split. "
+            "`buoy_held_out` holds out complete buoys from training.\n"
+        )
+
+    print("Saved shareable report:", report_path)
+    print("Saved shareable metrics:", metrics_copy)
+    if copied_figures:
+        print("Copied shareable figures to:", figures_dir)
+
+
 def run_random_split(args, x, y, features, out_dir: Path) -> dict[str, float | str]:
     x_train, x_test, y_train, y_test = train_test_split(
         x, y, test_size=args.test_size, random_state=args.random_state
@@ -159,6 +205,11 @@ def main() -> None:
     parser.add_argument("--min-samples-leaf", type=int, default=2)
     parser.add_argument("--include-context", action="store_true")
     parser.add_argument("--no-derived", action="store_true")
+    parser.add_argument(
+        "--no-share-report",
+        action="store_true",
+        help="Do not copy key results into the tracked reports/ folder.",
+    )
     args = parser.parse_args()
 
     df = load_buoy_csv(args.csv)
@@ -189,6 +240,9 @@ def main() -> None:
     print("\nMetrics:")
     print(metrics_df)
     print("Saved:", metrics_path)
+
+    if not args.no_share_report:
+        export_shareable_report(metrics_df, out_dir)
 
 
 if __name__ == "__main__":
