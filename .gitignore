@@ -1,6 +1,7 @@
 data/
 *.mat
 *.csv
+!reports/*.csv
 random_forest/outputs/
 __pycache__/
 *.pyc
