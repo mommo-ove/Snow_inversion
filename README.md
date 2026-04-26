@@ -35,6 +35,24 @@ This prints the CSV columns, summary statistics, buoy counts, and the internal s
 python random_forest\run_rf_experiments.py
 ```
 
+Run with time/location/meteorology context:
+
+```powershell
+python random_forest\run_rf_experiments.py --include-context --out-dir random_forest\outputs_context
+```
+
+Run context without air pressure:
+
+```powershell
+python random_forest\run_rf_experiments.py --include-context --exclude-columns Air_Pressure_mbar --out-dir random_forest\outputs_context_no_pressure
+```
+
+Run leave-one-buoy-out in addition to the default experiments:
+
+```powershell
+python random_forest\run_rf_experiments.py --leave-one-buoy-out --out-dir random_forest\outputs_loo
+```
+
 Outputs are written to:
 
 ```text

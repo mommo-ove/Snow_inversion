@@ -100,9 +100,12 @@ def make_model_table(
     include_context: bool = False,
     include_derived: bool = True,
     min_snow_depth: float | None = 0.0,
+    exclude_columns: Iterable[str] | None = None,
 ) -> tuple[pd.DataFrame, pd.Series, pd.Series | None, list[str]]:
     data = add_brightness_temperature_features(df)
     features = available_features(data, include_context, include_derived)
+    excluded = {c for c in (exclude_columns or []) if c}
+    features = [c for c in features if c not in excluded]
 
     required = features + [TARGET_COL]
     if GROUP_COL in data.columns:

@@ -152,6 +152,53 @@ def export_shareable_report(metrics_df: pd.DataFrame, out_dir: Path) -> None:
         print("Copied shareable figures to:", figures_dir)
 
 
+def run_leave_one_buoy_out(args, x, y, groups, out_dir: Path) -> pd.DataFrame:
+    if groups is None:
+        raise ValueError(f"Leave-one-buoy-out requires a {GROUP_COL} column.")
+
+    rows = []
+    unique_groups = sorted(groups.astype(str).unique())
+    for buoy in unique_groups:
+        test_mask = groups.astype(str) == buoy
+        x_train = x.loc[~test_mask]
+        x_test = x.loc[test_mask]
+        y_train = y.loc[~test_mask]
+        y_test = y.loc[test_mask]
+
+        model = make_model(args)
+        model.fit(x_train, y_train)
+        pred = model.predict(x_test)
+        rows.append(
+            {
+                "buoy": buoy,
+                "n_test": len(y_test),
+                "rmse_m": rmse(y_test, pred),
+                "mae_m": mean_absolute_error(y_test, pred),
+                "r2": r2_score(y_test, pred),
+                "snow_depth_mean_m": y_test.mean(),
+            }
+        )
+
+    loo_df = pd.DataFrame(rows).sort_values("rmse_m")
+    csv_path = out_dir / "leave_one_buoy_out_metrics.csv"
+    loo_df.to_csv(csv_path, index=False)
+    print("Saved:", csv_path)
+
+    fig_path = out_dir / "leave_one_buoy_out_rmse.png"
+    plot_df = loo_df.sort_values("rmse_m", ascending=True)
+    plt.figure(figsize=(8, max(4, len(plot_df) * 0.35)))
+    plt.barh(plot_df["buoy"], plot_df["rmse_m"], color="slateblue")
+    plt.xlabel("RMSE (m)")
+    plt.ylabel("Held-out buoy")
+    plt.title("Leave-one-buoy-out snow depth RMSE")
+    plt.tight_layout()
+    plt.savefig(fig_path, dpi=200)
+    plt.close()
+    print("Saved:", fig_path)
+
+    return loo_df
+
+
 def run_random_split(args, x, y, features, out_dir: Path) -> dict[str, float | str]:
     x_train, x_test, y_train, y_test = train_test_split(
         x, y, test_size=args.test_size, random_state=args.random_state
@@ -206,6 +253,17 @@ def main() -> None:
     parser.add_argument("--include-context", action="store_true")
     parser.add_argument("--no-derived", action="store_true")
     parser.add_argument(
+        "--exclude-columns",
+        nargs="*",
+        default=[],
+        help="Columns to drop from the feature set after automatic feature selection.",
+    )
+    parser.add_argument(
+        "--leave-one-buoy-out",
+        action="store_true",
+        help="Also run a leave-one-buoy-out evaluation and save per-buoy metrics.",
+    )
+    parser.add_argument(
         "--no-share-report",
         action="store_true",
         help="Do not copy key results into the tracked reports/ folder.",
@@ -218,6 +276,7 @@ def main() -> None:
         include_context=args.include_context,
         include_derived=not args.no_derived,
         min_snow_depth=0.0,
+        exclude_columns=args.exclude_columns,
     )
 
     out_dir = Path(args.out_dir)
@@ -240,6 +299,11 @@ def main() -> None:
     print("\nMetrics:")
     print(metrics_df)
     print("Saved:", metrics_path)
+
+    if args.leave_one_buoy_out:
+        print("\nRunning leave-one-buoy-out evaluation...")
+        loo_df = run_leave_one_buoy_out(args, x, y, groups, out_dir)
+        print(loo_df)
 
     if not args.no_share_report:
         export_shareable_report(metrics_df, out_dir)
