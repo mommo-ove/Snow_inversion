@@ -253,6 +253,11 @@ def main() -> None:
     parser.add_argument("--include-context", action="store_true")
     parser.add_argument("--no-derived", action="store_true")
     parser.add_argument(
+        "--include-passive-physics",
+        action="store_true",
+        help="Add passive microwave frequency-depth inspired features.",
+    )
+    parser.add_argument(
         "--exclude-columns",
         nargs="*",
         default=[],
@@ -275,6 +280,7 @@ def main() -> None:
         df,
         include_context=args.include_context,
         include_derived=not args.no_derived,
+        include_passive_physics=args.include_passive_physics,
         min_snow_depth=0.0,
         exclude_columns=args.exclude_columns,
     )

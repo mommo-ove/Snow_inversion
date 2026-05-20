@@ -86,12 +86,56 @@ def add_brightness_temperature_features(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def available_features(df: pd.DataFrame, include_context: bool, include_derived: bool) -> list[str]:
+def add_passive_microwave_features(df: pd.DataFrame) -> pd.DataFrame:
+    out = add_brightness_temperature_features(df)
+    required = set(TB_FEATURES)
+    if not required.issubset(out.columns):
+        return out
+
+    low_v = (out["TB_18V"] + out["TB_23V"]) / 2.0
+    low_h = (out["TB_18H"] + out["TB_23H"]) / 2.0
+    high_v = (out["TB_36V"] + out["TB_89V"]) / 2.0
+    high_h = (out["TB_36H"] + out["TB_89H"]) / 2.0
+    low_mean = (low_v + low_h) / 2.0
+    high_mean = (high_v + high_h) / 2.0
+
+    out["PM_LOW_FREQ_MEAN"] = low_mean
+    out["PM_HIGH_FREQ_MEAN"] = high_mean
+    out["PM_LOW_HIGH_DIFF"] = low_mean - high_mean
+    out["PM_LOW_HIGH_RATIO"] = np.where(high_mean != 0, low_mean / high_mean, np.nan)
+    out["PM_DEPTH_SENSITIVITY"] = np.where(
+        (low_mean + high_mean) != 0,
+        (low_mean - high_mean) / (low_mean + high_mean),
+        np.nan,
+    )
+    out["PM_SPECTRAL_SLOPE_V"] = (out["TB_89V"] - out["TB_18V"]) / (89.0 - 18.0)
+    out["PM_SPECTRAL_SLOPE_H"] = (out["TB_89H"] - out["TB_18H"]) / (89.0 - 18.0)
+    out["PM_POL_DIFF_LOW"] = low_v - low_h
+    out["PM_POL_DIFF_HIGH"] = high_v - high_h
+    out["PM_POL_DIFF_CHANGE"] = out["PM_POL_DIFF_HIGH"] - out["PM_POL_DIFF_LOW"]
+
+    pr_cols = [c for c in ["PR_18", "PR_23", "PR_36", "PR_89"] if c in out.columns]
+    gr_cols = [c for c in ["GR_36V_18V", "GR_89V_18V"] if c in out.columns]
+    if pr_cols:
+        out["PM_MEAN_PR"] = out[pr_cols].mean(axis=1)
+    if gr_cols:
+        out["PM_MEAN_GR"] = out[gr_cols].mean(axis=1)
+    return out
+
+
+def available_features(
+    df: pd.DataFrame,
+    include_context: bool,
+    include_derived: bool,
+    include_passive_physics: bool = False,
+) -> list[str]:
     candidates = list(TB_FEATURES)
     if include_context:
         candidates.extend(CONTEXT_FEATURES)
     if include_derived:
         candidates.extend([c for c in df.columns if c.startswith(("GR_", "PR_"))])
+    if include_passive_physics:
+        candidates.extend([c for c in df.columns if c.startswith("PM_")])
     return [c for c in candidates if c in df.columns and c not in LEAKAGE_COLUMNS]
 
 
@@ -99,11 +143,12 @@ def make_model_table(
     df: pd.DataFrame,
     include_context: bool = False,
     include_derived: bool = True,
+    include_passive_physics: bool = False,
     min_snow_depth: float | None = 0.0,
     exclude_columns: Iterable[str] | None = None,
 ) -> tuple[pd.DataFrame, pd.Series, pd.Series | None, list[str]]:
-    data = add_brightness_temperature_features(df)
-    features = available_features(data, include_context, include_derived)
+    data = add_passive_microwave_features(df) if include_passive_physics else add_brightness_temperature_features(df)
+    features = available_features(data, include_context, include_derived, include_passive_physics)
     excluded = {c for c in (exclude_columns or []) if c}
     features = [c for c in features if c not in excluded]
 

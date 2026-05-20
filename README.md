@@ -47,6 +47,18 @@ Run context without air pressure:
 python random_forest\run_rf_experiments.py --include-context --exclude-columns Air_Pressure_mbar --out-dir random_forest\outputs_context_no_pressure
 ```
 
+Run passive-microwave-inspired features:
+
+```powershell
+python random_forest\run_rf_experiments.py --include-passive-physics --out-dir random_forest\outputs_passive_physics
+```
+
+Run passive-microwave-inspired features with context and without air pressure:
+
+```powershell
+python random_forest\run_rf_experiments.py --include-passive-physics --include-context --exclude-columns Air_Pressure_mbar --leave-one-buoy-out --out-dir random_forest\outputs_passive_physics_context_no_pressure
+```
+
 Run leave-one-buoy-out in addition to the default experiments:
 
 ```powershell
