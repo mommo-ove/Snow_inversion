@@ -1,0 +1,18 @@
+{
+  "icebridge_mat": "D:\\liushilei\\极地积雪反演_IMB\\data\\Master_Dataset_AllFeatures.mat",
+  "imb_csv": "D:\\liushilei\\极地积雪反演_IMB\\data\\Validation_Dataset_IMB_AllBuoys_Combined_AllData.csv",
+  "out_dir": "reports\\combined_regional_framework",
+  "holdout_size": "0.1",
+  "inner_validation_size": "0.3",
+  "random_state": "42",
+  "n_estimators": "500",
+  "tuning_n_estimators": "250",
+  "tune_min_samples_leaf": "1,2,4,8",
+  "tune_max_features": "sqrt,0.5,1.0",
+  "regional_tb_mat": "C:\\Users\\lsl\\Desktop\\2017_02_fivedays_corrected.mat",
+  "mask_mat": "C:\\Users\\lsl\\Desktop\\common_snow_mask.mat",
+  "reference_dir": "C:\\Users\\lsl\\Desktop\\actual_plots_with_mask",
+  "skip_regional": "True",
+  "flipud_output": "True",
+  "max_snow_depth": "1.2"
+}
