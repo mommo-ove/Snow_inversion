@@ -100,13 +100,36 @@ def normalize_product_column(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def load_icebridge_mat(path: Path) -> pd.DataFrame:
+def load_numeric_mat_variable(path: Path, variable_name: str, expected_min_cols: int | None = None) -> np.ndarray:
     loadmat, _ = import_mat_tools()
-    mat = loadmat(path, squeeze_me=True)
-    if "Final_Data" not in mat:
-        raise KeyError(f"{path} does not contain variable Final_Data")
+    try:
+        mat = loadmat(path, squeeze_me=True)
+        if variable_name not in mat:
+            raise KeyError(f"{path} does not contain variable {variable_name}")
+        data = np.asarray(mat[variable_name], dtype=float)
+    except NotImplementedError as exc:
+        try:
+            import h5py
+        except ImportError as import_exc:
+            raise ImportError(
+                f"{path} is a MATLAB v7.3/HDF5 file. Install h5py to read it: pip install h5py"
+            ) from import_exc
 
-    data = np.asarray(mat["Final_Data"], dtype=float)
+        with h5py.File(path, "r") as handle:
+            if variable_name not in handle:
+                raise KeyError(f"{path} does not contain variable {variable_name}") from exc
+            data = np.asarray(handle[variable_name], dtype=float)
+
+    if data.ndim == 2 and expected_min_cols is not None:
+        # MATLAB v7.3 numeric arrays are often exposed by h5py as transposed
+        # relative to the MATLAB workspace shape.
+        if data.shape[1] < expected_min_cols and data.shape[0] >= expected_min_cols:
+            data = data.T
+    return data
+
+
+def load_icebridge_mat(path: Path) -> pd.DataFrame:
+    data = load_numeric_mat_variable(path, "Final_Data", expected_min_cols=len(ICEBRIDGE_COLUMNS))
     if data.ndim != 2 or data.shape[1] < len(ICEBRIDGE_COLUMNS):
         raise ValueError(
             f"Expected Final_Data with at least {len(ICEBRIDGE_COLUMNS)} columns, got {data.shape}"
