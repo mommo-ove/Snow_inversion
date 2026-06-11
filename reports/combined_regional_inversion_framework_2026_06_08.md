@@ -118,6 +118,42 @@ reports/combined_regional_framework/
 
 如果当前点样本表还没有这个列，脚本仍会完成“本文模型 vs 点位真实雪深”的验证，但无法输出“SMOS 产品 vs 点位真实雪深”的那一组指标。服务器上如果已经有对应天、对应点匹配好的 SMOS 产品值，只需要把列名整理成上述任意一种即可。
 
+## 本机生成 SMOS 产品点位列
+
+不要把 G 盘上的整包 `.he5` 原始数据复制到服务器。推荐在本机直接匹配产品值，只生成一个小 CSV：
+
+```powershell
+python random_forest\add_smos_product_to_points.py `
+  --amsr-dir "G:\AU_SI12_1-20250103_145027" `
+  --out-csv data\combined_points_with_smos_product.csv
+```
+
+这个脚本会：
+
+1. 合并 IceBridge 和 IMB 点样本。
+2. 按每个点的日期寻找对应 `.he5` 文件。
+3. 用点位经纬度在 AMSR/SMOS 12.5 km 极地网格上找最近像元。
+4. 读取 `SI_12km_NH_SNOWDEPTH_5DAY`。
+5. 将单位从 cm 转为 m。
+6. 将 `110/120/130/140/150/160` 等产品标志值视为缺失。
+7. 输出 `SMOS_Product_Snow_Depth_m`、匹配距离和匹配文件名。
+
+生成小 CSV 后，服务器只需要这个文件即可，不需要复制 G 盘原始目录。服务器重跑时使用：
+
+```bash
+python random_forest/run_combined_regional_framework.py \
+  --combined-csv data/combined_points_with_smos_product.csv \
+  --skip-regional
+```
+
+如果要用 Git 上传这个小 CSV，因为 `data/` 默认被 `.gitignore` 忽略，需要显式强制添加：
+
+```bash
+git add -f data/combined_points_with_smos_product.csv
+```
+
+如果不想把数据传到 GitHub，也可以用 `scp` 或 VS Code 直接传这个小 CSV 到服务器。
+
 ## 服务器运行建议
 
 服务器上拉取代码后，先安装依赖：

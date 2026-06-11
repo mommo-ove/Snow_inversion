@@ -153,6 +153,13 @@ def load_imb_csv(path: Path) -> pd.DataFrame:
     return normalize_product_column(df)
 
 
+def load_combined_csv(path: Path) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    if "source" not in df.columns:
+        df["source"] = "unknown"
+    return normalize_product_column(df)
+
+
 def build_combined_training_table(icebridge_path: Path, imb_path: Path) -> pd.DataFrame:
     icebridge = load_icebridge_mat(icebridge_path)
     imb = load_imb_csv(imb_path)
@@ -365,6 +372,22 @@ def build_holdout_metric_table(pred_df: pd.DataFrame) -> pd.DataFrame:
                     **evaluate_predictions(part[TARGET_COL], part[pred_col]),
                 }
             )
+
+    common = pred_df.dropna(subset=[PRODUCT_COL, "Model_Retrieved_Snow_Depth_m", TARGET_COL])
+    if len(common) > 0:
+        for method_id, method_name, pred_col in method_specs:
+            for subset, part in [("smos_matched", common), *[(f"smos_matched_{k}", v) for k, v in common.groupby("source")]]:
+                if len(part) == 0:
+                    continue
+                rows.append(
+                    {
+                        "method_id": method_id,
+                        "method": method_name,
+                        "subset": subset,
+                        "n": len(part),
+                        **evaluate_predictions(part[TARGET_COL], part[pred_col]),
+                    }
+                )
     return pd.DataFrame(rows)
 
 
@@ -629,6 +652,12 @@ def main() -> None:
     )
     parser.add_argument("--icebridge-mat", type=Path, default=DEFAULT_MAT)
     parser.add_argument("--imb-csv", type=Path, default=DEFAULT_CSV)
+    parser.add_argument(
+        "--combined-csv",
+        type=Path,
+        default=None,
+        help="Optional prebuilt combined point table, for example one augmented with SMOS product values.",
+    )
     parser.add_argument("--out-dir", type=Path, default=Path("reports/combined_regional_framework"))
     parser.add_argument("--holdout-size", type=float, default=0.10)
     parser.add_argument("--inner-validation-size", type=float, default=0.30)
@@ -649,7 +678,7 @@ def main() -> None:
     with (args.out_dir / "run_config.json").open("w", encoding="utf-8") as handle:
         json.dump({k: str(v) for k, v in vars(args).items()}, handle, indent=2, ensure_ascii=False)
 
-    combined = build_combined_training_table(args.icebridge_mat, args.imb_csv)
+    combined = load_combined_csv(args.combined_csv) if args.combined_csv else build_combined_training_table(args.icebridge_mat, args.imb_csv)
     model, features, metrics, tuning, best_params = make_holdout_predictions(args, combined, args.out_dir)
 
     regional_metrics = None
