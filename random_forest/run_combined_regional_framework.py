@@ -123,7 +123,9 @@ def load_numeric_mat_variable(path: Path, variable_name: str, expected_min_cols:
     if data.ndim == 2 and expected_min_cols is not None:
         # MATLAB v7.3 numeric arrays are often exposed by h5py as transposed
         # relative to the MATLAB workspace shape.
-        if data.shape[1] < expected_min_cols and data.shape[0] >= expected_min_cols:
+        if data.shape[0] == expected_min_cols and data.shape[1] > expected_min_cols:
+            data = data.T
+        elif data.shape[1] < expected_min_cols and data.shape[0] >= expected_min_cols:
             data = data.T
     return data
 
