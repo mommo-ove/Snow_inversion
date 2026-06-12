@@ -123,9 +123,7 @@ reports/combined_regional_framework/
 不要把 G 盘上的整包 `.he5` 原始数据复制到服务器。推荐在本机直接匹配产品值，只生成一个小 CSV：
 
 ```powershell
-python random_forest\add_smos_product_to_points.py `
-  --amsr-dir "G:\AU_SI12_1-20250103_145027" `
-  --out-csv data\combined_points_with_smos_product.csv
+matlab -batch "cd('C:\Users\lsl\Desktop\仿真\Snow_inversion'); addpath('random_forest'); add_smos_product_to_points('AMSRDir','G:\AU_SI12_1-20250103_145027','OutCsv','data\combined_points_with_smos_product.csv')"
 ```
 
 这个脚本会：
