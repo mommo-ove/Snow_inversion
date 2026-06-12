@@ -81,7 +81,7 @@ gridXYZ = latlonToUnitXYZ(gridLat(:), gridLon(:));
 fprintf('Building KD-tree with %d grid cells...\n', size(gridXYZ, 1));
 tree = KDTreeSearcher(gridXYZ);
 
-pointDate = compose('%04d%02d%02d', T.Year, T.Month, T.Day);
+pointDate = string(compose('%04d%02d%02d', T.Year, T.Month, T.Day));
 productValue = nan(height(T), 1);
 matchDistanceKm = nan(height(T), 1);
 matchedFile = strings(height(T), 1);
@@ -100,7 +100,7 @@ for i = 1:numel(uniquePointDates)
     end
 
     productFile = char(filePaths(fileIdx));
-    fprintf('Matching %s: %d points using %s\n', dateStr, sum(rowMask), productFile);
+    fprintf('Matching %s: %d points using %s\n', char(dateStr), sum(rowMask), productFile);
     raw = double(h5read(productFile, char(args.ProductPath)));
     product = raw * args.ProductScale;
     product(raw >= args.InvalidMinRaw | raw < 0) = nan;
