@@ -247,6 +247,26 @@ def evaluate_predictions(y_true, y_pred) -> dict[str, float]:
     }
 
 
+def build_sample_weights(meta: pd.DataFrame, y: pd.Series, mode: str) -> np.ndarray | None:
+    if mode == "none":
+        return None
+
+    weights = pd.Series(1.0, index=meta.index)
+    if mode in {"source", "source_depth"} and "source" in meta.columns:
+        source_counts = meta["source"].value_counts()
+        weights *= meta["source"].map(lambda value: 1.0 / source_counts[value])
+
+    if mode == "source_depth":
+        depth_bins = pd.qcut(y.rank(method="first"), q=5, labels=False, duplicates="drop")
+        depth_counts = depth_bins.value_counts()
+        weights *= depth_bins.map(lambda value: 1.0 / depth_counts[value])
+
+    mean_weight = float(weights.mean())
+    if mean_weight > 0:
+        weights = weights / mean_weight
+    return weights.to_numpy(dtype=float)
+
+
 def frame_to_markdown(df: pd.DataFrame) -> str:
     if df is None or df.empty:
         return "_No rows._"
@@ -284,9 +304,10 @@ def split_train_holdout(args: argparse.Namespace, x, y, meta):
 def tune_on_modeling_set(args: argparse.Namespace, x_model, y_model, meta_model) -> tuple[dict, pd.DataFrame]:
     tools = import_ml_tools()
     stratify = meta_model["source"] if meta_model["source"].value_counts().min() >= 2 else None
-    x_train, x_val, y_train, y_val = tools["train_test_split"](
+    x_train, x_val, y_train, y_val, meta_train, meta_val = tools["train_test_split"](
         x_model,
         y_model,
+        meta_model,
         test_size=args.inner_validation_size,
         random_state=args.random_state,
         stratify=stratify,
@@ -299,7 +320,11 @@ def tune_on_modeling_set(args: argparse.Namespace, x_model, y_model, meta_model)
     for min_leaf in leaf_values:
         for max_features in max_feature_values:
             model = make_model(args.random_state, args.tuning_n_estimators, min_leaf, max_features)
-            model.fit(x_train, y_train)
+            train_weights = build_sample_weights(meta_train, y_train, args.sample_weighting)
+            if train_weights is None:
+                model.fit(x_train, y_train)
+            else:
+                model.fit(x_train, y_train, sample_weight=train_weights)
             pred = model.predict(x_val)
             metrics = evaluate_predictions(y_val, pred)
             row = {
@@ -336,7 +361,11 @@ def make_holdout_predictions(args: argparse.Namespace, combined: pd.DataFrame, o
         best_params["min_samples_leaf"],
         best_params["max_features"],
     )
-    holdout_model.fit(x_model, y_model)
+    model_weights = build_sample_weights(meta_model, y_model, args.sample_weighting)
+    if model_weights is None:
+        holdout_model.fit(x_model, y_model)
+    else:
+        holdout_model.fit(x_model, y_model, sample_weight=model_weights)
     model_pred = holdout_model.predict(x_holdout)
 
     product_cols = [col for _, _, col in available_product_specs(meta_holdout) if col in meta_holdout.columns]
@@ -369,7 +398,11 @@ def make_holdout_predictions(args: argparse.Namespace, combined: pd.DataFrame, o
         best_params["min_samples_leaf"],
         best_params["max_features"],
     )
-    deployment_model.fit(x, y)
+    deployment_weights = build_sample_weights(meta, y, args.sample_weighting)
+    if deployment_weights is None:
+        deployment_model.fit(x, y)
+    else:
+        deployment_model.fit(x, y, sample_weight=deployment_weights)
     tools["dump"](
         {
             "model": deployment_model,
@@ -751,6 +784,13 @@ def main() -> None:
     parser.add_argument("--tuning-n-estimators", type=int, default=250)
     parser.add_argument("--tune-min-samples-leaf", default="1,2,4,8")
     parser.add_argument("--tune-max-features", default="sqrt,0.5,1.0")
+    parser.add_argument(
+        "--sample-weighting",
+        choices=["none", "source", "source_depth"],
+        default="none",
+        help="Optional training sample weighting. 'source' balances IceBridge/IMB total weight; "
+        "'source_depth' also balances snow-depth bins.",
+    )
     parser.add_argument("--regional-tb-mat", default=r"C:\Users\lsl\Desktop\2017_02_fivedays_corrected.mat")
     parser.add_argument("--mask-mat", default=r"C:\Users\lsl\Desktop\common_snow_mask.mat")
     parser.add_argument("--reference-dir", default=r"C:\Users\lsl\Desktop\actual_plots_with_mask")
