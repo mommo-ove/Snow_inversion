@@ -44,6 +44,10 @@ PRODUCT_ALIASES = [
     "Product_Snow_Depth_m",
     "Existing_SMOS_Snow_Depth_m",
 ]
+EXTRA_PRODUCT_SPECS = [
+    ("ecco_icecovered", "ECCO ice-covered", "ECCO_IceCovered_Snow_Depth_m"),
+    ("ecco_areaavg", "ECCO area-average", "ECCO_AreaAvg_Snow_Depth_m"),
+]
 
 
 def import_mat_tools():
@@ -98,6 +102,12 @@ def normalize_product_column(df: pd.DataFrame) -> pd.DataFrame:
             return out
     out[PRODUCT_COL] = np.nan
     return out
+
+
+def available_product_specs(df: pd.DataFrame) -> list[tuple[str, str, str]]:
+    specs = [("smos_product", "AMSR/SMOS product", PRODUCT_COL)]
+    specs.extend(spec for spec in EXTRA_PRODUCT_SPECS if spec[2] in df.columns)
+    return specs
 
 
 def load_numeric_mat_variable(path: Path, variable_name: str, expected_min_cols: int | None = None) -> np.ndarray:
@@ -317,12 +327,14 @@ def make_holdout_predictions(args: argparse.Namespace, combined: pd.DataFrame, o
     holdout_model.fit(x_model, y_model)
     model_pred = holdout_model.predict(x_holdout)
 
-    pred_df = meta_holdout[
-        ["source", "Year", "Month", "Day", "Hour", "Latitude", "Longitude", TARGET_COL, PRODUCT_COL]
-    ].copy()
+    product_cols = [col for _, _, col in available_product_specs(meta_holdout) if col in meta_holdout.columns]
+    meta_cols = ["source", "Year", "Month", "Day", "Hour", "Latitude", "Longitude", TARGET_COL, *product_cols]
+    pred_df = meta_holdout[meta_cols].copy()
     pred_df["Model_Retrieved_Snow_Depth_m"] = model_pred
     pred_df["Model_Error_m"] = pred_df["Model_Retrieved_Snow_Depth_m"] - pred_df[TARGET_COL]
-    pred_df["SMOS_Product_Error_m"] = pred_df[PRODUCT_COL] - pred_df[TARGET_COL]
+    for method_id, _, pred_col in available_product_specs(pred_df):
+        if pred_col in pred_df.columns:
+            pred_df[f"{method_id}_Error_m"] = pred_df[pred_col] - pred_df[TARGET_COL]
     pred_df.to_csv(out_dir / "holdout_10pct_point_comparison.csv", index=False)
 
     metrics = build_holdout_metric_table(pred_df)
@@ -354,11 +366,11 @@ def make_holdout_predictions(args: argparse.Namespace, combined: pd.DataFrame, o
 
 def build_holdout_metric_table(pred_df: pd.DataFrame) -> pd.DataFrame:
     rows = []
-    method_specs = [
-        ("model", "本文模型", "Model_Retrieved_Snow_Depth_m"),
-        ("smos_product", "SMOS产品", PRODUCT_COL),
-    ]
+    product_specs = available_product_specs(pred_df)
+    method_specs = [("model", "RF model", "Model_Retrieved_Snow_Depth_m"), *product_specs]
     for method_id, method_name, pred_col in method_specs:
+        if pred_col not in pred_df.columns:
+            continue
         available = pred_df.dropna(subset=[pred_col, TARGET_COL])
         for subset, part in [("all", available), *available.groupby("source")]:
             if len(part) == 0:
@@ -373,37 +385,53 @@ def build_holdout_metric_table(pred_df: pd.DataFrame) -> pd.DataFrame:
                 }
             )
 
-    common = pred_df.dropna(subset=[PRODUCT_COL, "Model_Retrieved_Snow_Depth_m", TARGET_COL])
-    if len(common) > 0:
-        for method_id, method_name, pred_col in method_specs:
-            for subset, part in [("smos_matched", common), *[(f"smos_matched_{k}", v) for k, v in common.groupby("source")]]:
-                if len(part) == 0:
-                    continue
-                rows.append(
-                    {
-                        "method_id": method_id,
-                        "method": method_name,
-                        "subset": subset,
-                        "n": len(part),
-                        **evaluate_predictions(part[TARGET_COL], part[pred_col]),
-                    }
-                )
+    for product_id, _, product_col in product_specs:
+        if product_col not in pred_df.columns:
+            continue
+        common = pred_df.dropna(subset=[product_col, "Model_Retrieved_Snow_Depth_m", TARGET_COL])
+        if len(common) > 0:
+            common_specs = [
+                ("model", "RF model", "Model_Retrieved_Snow_Depth_m"),
+                next(spec for spec in product_specs if spec[0] == product_id),
+            ]
+            for method_id, method_name, pred_col in common_specs:
+                for subset, part in [
+                    (f"{product_id}_matched", common),
+                    *[(f"{product_id}_matched_{k}", v) for k, v in common.groupby("source")],
+                ]:
+                    if len(part) == 0:
+                        continue
+                    rows.append(
+                        {
+                            "method_id": method_id,
+                            "method": method_name,
+                            "subset": subset,
+                            "n": len(part),
+                            **evaluate_predictions(part[TARGET_COL], part[pred_col]),
+                        }
+                    )
     return pd.DataFrame(rows)
 
 
 def save_holdout_scatter(pred_df: pd.DataFrame, fig_path: Path) -> None:
     plt = import_plotting()
-    has_product = pred_df[PRODUCT_COL].notna().any()
-    ncols = 2 if has_product else 1
-    fig, axes = plt.subplots(1, ncols, figsize=(6 * ncols, 5.8), constrained_layout=True)
+    panels = [("RF model", "Model_Retrieved_Snow_Depth_m")]
+    panels.extend(
+        (name, col)
+        for _, name, col in available_product_specs(pred_df)
+        if col in pred_df.columns and pred_df[col].notna().any()
+    )
+    ncols = len(panels)
+    fig, axes = plt.subplots(1, ncols, figsize=(5.8 * ncols, 5.8), constrained_layout=True)
     if ncols == 1:
         axes = [axes]
 
-    panels = [("本文模型", "Model_Retrieved_Snow_Depth_m")]
-    if has_product:
-        panels.append(("SMOS产品", PRODUCT_COL))
     for ax, (title, pred_col) in zip(axes, panels):
         part = pred_df.dropna(subset=[pred_col, TARGET_COL])
+        if part.empty:
+            ax.text(0.5, 0.5, "No matched data", ha="center", va="center")
+            ax.axis("off")
+            continue
         colors = part["source"].astype("category").cat.codes
         ax.scatter(part[TARGET_COL], part[pred_col], c=colors, s=13, alpha=0.65)
         lo = float(min(part[TARGET_COL].min(), part[pred_col].min()))
@@ -424,13 +452,13 @@ def save_metric_comparison(metrics: pd.DataFrame, fig_path: Path) -> None:
     plot_df = metrics[metrics["subset"] == "all"].copy()
     if plot_df.empty:
         return
-    fig, ax = plt.subplots(figsize=(7, 4.5), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(8.5, 4.8), constrained_layout=True)
     x = np.arange(len(plot_df))
     width = 0.35
     ax.bar(x - width / 2, plot_df["rmse_m"], width, label="RMSE")
     ax.bar(x + width / 2, plot_df["mae_m"], width, label="MAE")
     ax.set_xticks(x)
-    ax.set_xticklabels(plot_df["method"])
+    ax.set_xticklabels(plot_df["method"], rotation=15, ha="right")
     ax.set_ylabel("Error (m)")
     ax.set_title("10% independent point validation")
     ax.grid(True, axis="y", linewidth=0.4, alpha=0.35)
@@ -613,7 +641,7 @@ def write_run_summary(
     features: list[str],
     best_params: dict,
 ) -> None:
-    has_product_metrics = "smos_product" in set(metrics.get("method_id", []))
+    has_product_metrics = any(method_id != "model" for method_id in set(metrics.get("method_id", [])))
     report_path = out_dir / "combined_regional_framework_record.md"
     with report_path.open("w", encoding="utf-8") as handle:
         handle.write("# Combined IceBridge + IMB SMOS Inversion Record\n\n")
@@ -621,7 +649,7 @@ def write_run_summary(
         handle.write(
             "Samples are split into 90% modeling data and 10% independent point validation data. "
             "The 90% modeling data is internally split again for parameter tuning, then the tuned model is evaluated on the untouched 10% points. "
-            "The key point validation compares the existing SMOS product and the trained model against point snow-depth truth.\n\n"
+            "The key point validation compares the trained model and any matched product columns against point snow-depth truth.\n\n"
         )
         handle.write("## Best model parameters\n\n")
         handle.write(json.dumps(best_params, ensure_ascii=False, indent=2))
@@ -631,9 +659,9 @@ def write_run_summary(
         handle.write(frame_to_markdown(metrics))
         if not has_product_metrics:
             handle.write(
-                "\n\nNote: no matched SMOS product snow-depth column was found in the point samples, "
-                "so this run only reports model-vs-point-truth metrics. Add a column such as "
-                f"`{PRODUCT_COL}` to enable the direct SMOS-product-vs-truth comparison.\n"
+                "\n\nNote: no matched product snow-depth columns were found in the point samples, "
+                "so this run only reports model-vs-point-truth metrics. Add columns such as "
+                f"`{PRODUCT_COL}` or `ECCO_IceCovered_Snow_Depth_m` to enable product-vs-truth comparisons.\n"
             )
         handle.write("\n\n## Regional visualization/product comparison\n\n")
         if regional_metrics is None or regional_metrics.empty:
