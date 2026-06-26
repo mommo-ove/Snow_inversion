@@ -48,6 +48,14 @@ EXTRA_PRODUCT_SPECS = [
     ("ecco_icecovered", "ECCO ice-covered", "ECCO_IceCovered_Snow_Depth_m"),
     ("ecco_areaavg", "ECCO area-average", "ECCO_AreaAvg_Snow_Depth_m"),
 ]
+DIAGNOSTIC_COLS = [
+    "SMOS_Product_Match_Distance_Km",
+    "SMOS_Product_File",
+    "ECCO_Sea_Ice_Concentration",
+    "ECCO_Sea_Ice_Thickness_m",
+    "ECCO_Product_Match_Distance_Km",
+    "ECCO_Product_File",
+]
 
 
 def import_mat_tools():
@@ -108,6 +116,10 @@ def available_product_specs(df: pd.DataFrame) -> list[tuple[str, str, str]]:
     specs = [("smos_product", "AMSR/SMOS product", PRODUCT_COL)]
     specs.extend(spec for spec in EXTRA_PRODUCT_SPECS if spec[2] in df.columns)
     return specs
+
+
+def available_diagnostic_cols(df: pd.DataFrame) -> list[str]:
+    return [col for col in DIAGNOSTIC_COLS if col in df.columns]
 
 
 def load_numeric_mat_variable(path: Path, variable_name: str, expected_min_cols: int | None = None) -> np.ndarray:
@@ -328,7 +340,18 @@ def make_holdout_predictions(args: argparse.Namespace, combined: pd.DataFrame, o
     model_pred = holdout_model.predict(x_holdout)
 
     product_cols = [col for _, _, col in available_product_specs(meta_holdout) if col in meta_holdout.columns]
-    meta_cols = ["source", "Year", "Month", "Day", "Hour", "Latitude", "Longitude", TARGET_COL, *product_cols]
+    meta_cols = [
+        "source",
+        "Year",
+        "Month",
+        "Day",
+        "Hour",
+        "Latitude",
+        "Longitude",
+        TARGET_COL,
+        *product_cols,
+        *available_diagnostic_cols(meta_holdout),
+    ]
     pred_df = meta_holdout[meta_cols].copy()
     pred_df["Model_Retrieved_Snow_Depth_m"] = model_pred
     pred_df["Model_Error_m"] = pred_df["Model_Retrieved_Snow_Depth_m"] - pred_df[TARGET_COL]
@@ -368,6 +391,24 @@ def build_holdout_metric_table(pred_df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     product_specs = available_product_specs(pred_df)
     method_specs = [("model", "RF model", "Model_Retrieved_Snow_Depth_m"), *product_specs]
+
+    def append_metric_rows(subset: str, part: pd.DataFrame, specs: list[tuple[str, str, str]]) -> None:
+        for method_id, method_name, pred_col in specs:
+            if pred_col not in part.columns:
+                continue
+            valid = part.dropna(subset=[pred_col, TARGET_COL])
+            if len(valid) == 0:
+                continue
+            rows.append(
+                {
+                    "method_id": method_id,
+                    "method": method_name,
+                    "subset": subset,
+                    "n": len(valid),
+                    **evaluate_predictions(valid[TARGET_COL], valid[pred_col]),
+                }
+            )
+
     for method_id, method_name, pred_col in method_specs:
         if pred_col not in pred_df.columns:
             continue
@@ -410,6 +451,22 @@ def build_holdout_metric_table(pred_df: pd.DataFrame) -> pd.DataFrame:
                             **evaluate_predictions(part[TARGET_COL], part[pred_col]),
                         }
                     )
+
+            quality_masks = []
+            distance_col = {
+                "smos_product": "SMOS_Product_Match_Distance_Km",
+                "ecco_icecovered": "ECCO_Product_Match_Distance_Km",
+                "ecco_areaavg": "ECCO_Product_Match_Distance_Km",
+            }.get(product_id)
+            if distance_col in common.columns:
+                quality_masks.append((f"{product_id}_dist_le_20km", common[distance_col] <= 20))
+            if product_id.startswith("ecco") and "ECCO_Sea_Ice_Concentration" in common.columns:
+                quality_masks.append(
+                    (f"{product_id}_sic_ge_0p8", common["ECCO_Sea_Ice_Concentration"] >= 0.8)
+                )
+            for subset, mask in quality_masks:
+                qc_part = common[mask.fillna(False)]
+                append_metric_rows(subset, qc_part, common_specs)
     return pd.DataFrame(rows)
 
 
