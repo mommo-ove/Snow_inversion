@@ -2,7 +2,7 @@
 
 ## Protocol
 
-Samples are split into 90% modeling data and 10% independent point validation data. The 90% modeling data is internally split again for parameter tuning, then the tuned model is evaluated on the untouched 10% points. The key point validation compares the existing SMOS product and the trained model against point snow-depth truth.
+Samples are split into 90% modeling data and 10% independent point validation data. The 90% modeling data is internally split again for parameter tuning, then the tuned model is evaluated on the untouched 10% points. The key point validation compares the trained model and any matched product columns against point snow-depth truth.
 
 ## Best model parameters
 
@@ -30,20 +30,38 @@ Samples are split into 90% modeling data and 10% independent point validation da
 
 ## 10% independent point validation
 
-| method_id    | method | subset                 | n    | rmse_m  | mae_m   | bias_m    | r2      |
-| ------------ | ------ | ---------------------- | ---- | ------- | ------- | --------- | ------- |
-| model        | 本文模型   | all                    | 1993 | 0.05223 | 0.02778 | 0.001647  | 0.8581  |
-| model        | 本文模型   | icebridge              | 867  | 0.06831 | 0.0488  | 0.002209  | 0.6193  |
-| model        | 本文模型   | imb                    | 1126 | 0.03514 | 0.01159 | 0.001214  | 0.9489  |
-| smos_product | SMOS产品 | all                    | 336  | 0.1721  | 0.1085  | 0.03696   | -0.158  |
-| smos_product | SMOS产品 | icebridge              | 160  | 0.09132 | 0.07689 | 0.05887   | -0.9761 |
-| smos_product | SMOS产品 | imb                    | 176  | 0.2213  | 0.1373  | 0.01703   | -0.1766 |
-| model        | 本文模型   | smos_matched           | 336  | 0.04749 | 0.02237 | 0.00251   | 0.9118  |
-| model        | 本文模型   | smos_matched_icebridge | 160  | 0.05803 | 0.03535 | 0.009214  | 0.2022  |
-| model        | 本文模型   | smos_matched_imb       | 176  | 0.03528 | 0.01056 | -0.003585 | 0.9701  |
-| smos_product | SMOS产品 | smos_matched           | 336  | 0.1721  | 0.1085  | 0.03696   | -0.158  |
-| smos_product | SMOS产品 | smos_matched_icebridge | 160  | 0.09132 | 0.07689 | 0.05887   | -0.9761 |
-| smos_product | SMOS产品 | smos_matched_imb       | 176  | 0.2213  | 0.1373  | 0.01703   | -0.1766 |
+| method_id       | method            | subset                            | n    | rmse_m  | mae_m   | bias_m    | r2      |
+| --------------- | ----------------- | --------------------------------- | ---- | ------- | ------- | --------- | ------- |
+| model           | RF model          | all                               | 1993 | 0.05223 | 0.02778 | 0.001647  | 0.8581  |
+| model           | RF model          | icebridge                         | 867  | 0.06831 | 0.0488  | 0.002209  | 0.6193  |
+| model           | RF model          | imb                               | 1126 | 0.03514 | 0.01159 | 0.001214  | 0.9489  |
+| smos_product    | AMSR/SMOS product | all                               | 336  | 0.1721  | 0.1085  | 0.03696   | -0.158  |
+| smos_product    | AMSR/SMOS product | icebridge                         | 160  | 0.09132 | 0.07689 | 0.05887   | -0.9761 |
+| smos_product    | AMSR/SMOS product | imb                               | 176  | 0.2213  | 0.1373  | 0.01703   | -0.1766 |
+| ecco_icecovered | ECCO ice-covered  | all                               | 1944 | 0.1749  | 0.1265  | 0.004679  | -0.5714 |
+| ecco_icecovered | ECCO ice-covered  | icebridge                         | 853  | 0.1358  | 0.1098  | 0.084     | -0.5028 |
+| ecco_icecovered | ECCO ice-covered  | imb                               | 1091 | 0.2002  | 0.1396  | -0.05734  | -0.624  |
+| ecco_areaavg    | ECCO area-average | all                               | 1979 | 0.1712  | 0.1229  | -0.005615 | -0.5199 |
+| ecco_areaavg    | ECCO area-average | icebridge                         | 853  | 0.1281  | 0.1027  | 0.0736    | -0.3391 |
+| ecco_areaavg    | ECCO area-average | imb                               | 1126 | 0.1977  | 0.1383  | -0.06563  | -0.6177 |
+| model           | RF model          | smos_product_matched              | 336  | 0.04749 | 0.02237 | 0.00251   | 0.9118  |
+| model           | RF model          | smos_product_matched_icebridge    | 160  | 0.05803 | 0.03535 | 0.009214  | 0.2022  |
+| model           | RF model          | smos_product_matched_imb          | 176  | 0.03528 | 0.01056 | -0.003585 | 0.9701  |
+| smos_product    | AMSR/SMOS product | smos_product_matched              | 336  | 0.1721  | 0.1085  | 0.03696   | -0.158  |
+| smos_product    | AMSR/SMOS product | smos_product_matched_icebridge    | 160  | 0.09132 | 0.07689 | 0.05887   | -0.9761 |
+| smos_product    | AMSR/SMOS product | smos_product_matched_imb          | 176  | 0.2213  | 0.1373  | 0.01703   | -0.1766 |
+| model           | RF model          | ecco_icecovered_matched           | 1944 | 0.05228 | 0.02778 | 0.001517  | 0.8596  |
+| model           | RF model          | ecco_icecovered_matched_icebridge | 853  | 0.0684  | 0.04873 | 0.002348  | 0.6184  |
+| model           | RF model          | ecco_icecovered_matched_imb       | 1091 | 0.03481 | 0.0114  | 0.0008673 | 0.9509  |
+| ecco_icecovered | ECCO ice-covered  | ecco_icecovered_matched           | 1944 | 0.1749  | 0.1265  | 0.004679  | -0.5714 |
+| ecco_icecovered | ECCO ice-covered  | ecco_icecovered_matched_icebridge | 853  | 0.1358  | 0.1098  | 0.084     | -0.5028 |
+| ecco_icecovered | ECCO ice-covered  | ecco_icecovered_matched_imb       | 1091 | 0.2002  | 0.1396  | -0.05734  | -0.624  |
+| model           | RF model          | ecco_areaavg_matched              | 1979 | 0.05215 | 0.0276  | 0.001703  | 0.859   |
+| model           | RF model          | ecco_areaavg_matched_icebridge    | 853  | 0.0684  | 0.04873 | 0.002348  | 0.6184  |
+| model           | RF model          | ecco_areaavg_matched_imb          | 1126 | 0.03514 | 0.01159 | 0.001214  | 0.9489  |
+| ecco_areaavg    | ECCO area-average | ecco_areaavg_matched              | 1979 | 0.1712  | 0.1229  | -0.005615 | -0.5199 |
+| ecco_areaavg    | ECCO area-average | ecco_areaavg_matched_icebridge    | 853  | 0.1281  | 0.1027  | 0.0736    | -0.3391 |
+| ecco_areaavg    | ECCO area-average | ecco_areaavg_matched_imb          | 1126 | 0.1977  | 0.1383  | -0.06563  | -0.6177 |
 
 ## Regional visualization/product comparison
 

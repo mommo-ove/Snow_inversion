@@ -1,7 +1,7 @@
 {
   "icebridge_mat": "D:\\liushilei\\极地积雪反演_IMB\\data\\Master_Dataset_AllFeatures.mat",
   "imb_csv": "D:\\liushilei\\极地积雪反演_IMB\\data\\Validation_Dataset_IMB_AllBuoys_Combined_AllData.csv",
-  "combined_csv": "data\\combined_points_with_smos_product.csv",
+  "combined_csv": "data\\combined_points_with_smos_ecco_products.csv",
   "out_dir": "reports\\combined_regional_framework",
   "holdout_size": "0.1",
   "inner_validation_size": "0.3",
