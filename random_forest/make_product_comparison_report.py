@@ -87,6 +87,32 @@ def aggregate_to_grid(
     return grouped
 
 
+def nearest_truth_to_grid(
+    part: pd.DataFrame,
+    product_col: str,
+    resolution_deg: float,
+) -> pd.DataFrame:
+    work = part.dropna(subset=[TARGET_COL, MODEL_COL, product_col, "Latitude", "Longitude"]).copy()
+    if work.empty:
+        return work
+    work["date"] = work[["Year", "Month", "Day"]].astype(int).astype(str).agg("-".join, axis=1)
+    work["grid_id"] = rounded_grid_id(work["Latitude"], work["Longitude"], resolution_deg)
+    work["grid_lat"] = np.round(work["Latitude"].astype(float) / resolution_deg) * resolution_deg
+    work["grid_lon"] = np.round(work["Longitude"].astype(float) / resolution_deg) * resolution_deg
+    work["grid_center_distance_deg"] = np.sqrt(
+        (work["Latitude"].astype(float) - work["grid_lat"]) ** 2
+        + (work["Longitude"].astype(float) - work["grid_lon"]) ** 2
+    )
+    sort_cols = ["date", "grid_id", "grid_center_distance_deg"]
+    if "Hour" in work.columns:
+        work["_hour_sort"] = pd.to_numeric(work["Hour"], errors="coerce").fillna(12).sub(12).abs()
+        sort_cols.append("_hour_sort")
+    nearest = work.sort_values(sort_cols).groupby(["date", "grid_id"], as_index=False).first()
+    counts = work.groupby(["date", "grid_id"], as_index=False).size().rename(columns={"size": "n_candidate_points"})
+    nearest = nearest.merge(counts, on=["date", "grid_id"], how="left")
+    return nearest.drop(columns=[col for col in ["_hour_sort"] if col in nearest.columns])
+
+
 def build_comparison_tables(df: pd.DataFrame, min_points_per_cell: int) -> tuple[pd.DataFrame, pd.DataFrame]:
     rows = []
     aggregate_rows = []
@@ -107,11 +133,27 @@ def build_comparison_tables(df: pd.DataFrame, min_points_per_cell: int) -> tuple
             add_metric_rows(rows, "ecco_sic_ge_0p8", high_ice, product_id, product_name, product_col)
 
         resolution = 0.5 if product_id.startswith("ecco") else 0.25
+        nearest = nearest_truth_to_grid(common, product_col, resolution)
+        add_metric_rows(rows, f"grid_nearest_truth_{resolution:g}deg", nearest, product_id, product_name, product_col)
         agg = aggregate_to_grid(common, product_col, resolution, min_points_per_cell)
         add_metric_rows(rows, f"grid_aggregated_{resolution:g}deg", agg, product_id, product_name, product_col)
         if not agg.empty:
             aggregate_rows.append(
-                agg.assign(product_id=product_id, product_name=product_name, grid_resolution_deg=resolution)
+                agg.assign(
+                    product_id=product_id,
+                    product_name=product_name,
+                    grid_resolution_deg=resolution,
+                    comparison="grid_aggregated",
+                )
+            )
+        if not nearest.empty:
+            aggregate_rows.append(
+                nearest.assign(
+                    product_id=product_id,
+                    product_name=product_name,
+                    grid_resolution_deg=resolution,
+                    comparison="grid_nearest_truth",
+                )
             )
 
     metrics = pd.DataFrame(rows)
@@ -123,11 +165,11 @@ def write_report(metrics: pd.DataFrame, aggregates: pd.DataFrame, out_path: Path
     with out_path.open("w", encoding="utf-8") as handle:
         handle.write("# Product Comparison Report\n\n")
         handle.write("This report separates product comparison from model training. The point truth remains IceBridge/IMB snow depth. ")
-        handle.write("External products are compared only on common valid points and, where possible, on screened or grid-aggregated subsets.\n\n")
+        handle.write("External products are compared only on common valid points and, where possible, on screened or grid-centered subsets.\n\n")
         handle.write("## Why This Is Needed\n\n")
         handle.write(
             "A direct point-vs-grid comparison can exaggerate product errors because point observations and satellite/reanalysis products have different spatial supports. "
-            "The table below therefore includes common-valid, distance-screened, sea-ice-screened, and approximate grid-aggregated comparisons.\n\n"
+            "The table below therefore includes common-valid, distance-screened, sea-ice-screened, grid-nearest-truth, and approximate grid-aggregated comparisons.\n\n"
         )
         handle.write("## Metrics\n\n")
         if metrics.empty:
@@ -138,10 +180,11 @@ def write_report(metrics: pd.DataFrame, aggregates: pd.DataFrame, out_path: Path
         handle.write("## Interpretation Rule\n\n")
         handle.write(
             "Use `common_valid_points` as the main point-level comparison. Use distance and SIC subsets as diagnostic checks. "
-            "Use grid-aggregated rows as a fairer product-scale comparison, but report the number of aggregated cells because it may be much smaller than the point count.\n"
+            "Use `grid_nearest_truth_*` when avoiding same-day buoy-track averaging is important. "
+            "Use `grid_aggregated_*` only as a sensitivity check for approximate product-scale comparison, and report the number of cells because it may be much smaller than the point count.\n"
         )
         if not aggregates.empty:
-            handle.write(f"\nAggregated product-scale rows: {len(aggregates)}\n")
+            handle.write(f"\nGrid-centered diagnostic rows: {len(aggregates)}\n")
 
 
 def main() -> None:
